@@ -1,0 +1,14 @@
+# Synthetic
+track_id	track_name	artist_name	album_name	release_year	genre	popularity	duration_ms	explicit	danceability	energy	loudness	speechiness	acousticness	instrumentalness	liveness	valence	tempo	key	mode	time_signature
+
+# Billboard Hot-100
+date	rank	song	artist	last-week	peak-rank	weeks-on-board
+
+# Genius
+title	tag	artist	year	views	features	lyrics	id	language_cld3	language_ft	language
+
+# Spotify Tracks Real
+track_id	track_name	track_number	track_popularity	track_duration_ms	explicit	artist_name	artist_popularity	artist_followers	artist_genres	album_id	album_name	album_release_date	album_total_tracks	album_type
+
+track_id	track_name	track_number	track_popularity	explicit	artist_name	artist_popularity	artist_followers	artist_genres	album_id	album_name	album_release_date	album_total_tracks	album_type	track_duration_min
+
