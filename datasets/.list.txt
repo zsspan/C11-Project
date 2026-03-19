@@ -1,0 +1,12 @@
+# Simulated Spotify Data
+- spotify_tracks.csv 
+
+# Genius Lyrics
+- sample_100k.csv 
+
+# Billboard Hot 100
+- charts.csv 
+
+# Spotify Global Music (Two Files)
+- spotify_data_clean.csv
+- track_data_final.csv

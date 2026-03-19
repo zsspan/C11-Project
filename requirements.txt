@@ -1,0 +1,16 @@
+# CREATE / ACTIVATE VIRTUAL ENVIRONMENT
+# python -m venv venv
+# .venv\Scripts\activate
+
+# pip install -r requirements.txt
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+torch
+tensorflow
+torchvision
+tqdm
+jupyter
+ipykernel
