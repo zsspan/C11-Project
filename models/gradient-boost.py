@@ -12,6 +12,7 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score,
 )
+from itertools import product
 
 df = pd.read_csv("../preprocess/output/spotify_preprocessed.csv")
 
@@ -60,7 +61,7 @@ fixed_params = {
 param_grid = {
     'max_depth': [3, 6, 9],
     'learning_rate': [0.01, 0.1, 0.3],
-    'n_estimators':  [50, 100]
+    'n_estimators':  [50, 100, 200]
 }
 
 def focal_loss_multiclass(y_pred, dtrain, gamma):
@@ -116,7 +117,7 @@ def evaluate(model, dtest, y_test, name, num_class, objective):
 
 #########################################################################################
 # Model 1 : uses softprob as objective function (cross-entropy, outputs probabilities)
-# 5-fold cross validation for maximizing accuracy
+# 5-fold cross validation for maximizing F1 macro, use F1 macro and not accuracy because of class imbalance
 gs_softprob = GridSearchCV(
     XGBClassifier(
         **fixed_params,
@@ -124,13 +125,13 @@ gs_softprob = GridSearchCV(
         eval_metric='mlogloss',
     ),
     param_grid=param_grid,
-    scoring='accuracy',
+    scoring='f1_macro',
     verbose=1
 )
 gs_softprob.fit(X_train, y_train)
 
 print("Softprob best params:", gs_softprob.best_params_)
-print("Softprob best CV Accuracy: ", round(gs_softprob.best_score_, 4))
+print("Softprob best CV F1: ", round(gs_softprob.best_score_, 4))
 
 # model with best params
 best_sp = gs_softprob.best_params_
@@ -150,21 +151,21 @@ model_softprob = xgb.train(
 
 #####################################################
 # Model 2 : uses softmax as objective function
-# 5-fold cross validation for maximizing accuracy
+# 5-fold cross validation for maximizing F1 macro
 gs_softmax = GridSearchCV(
     XGBClassifier(
         **fixed_params,
         objective='multi:softmax',
     ),
     param_grid=param_grid,
-    scoring='accuracy',
+    scoring='f1_macro',
     n_jobs=-1,
     verbose=1
 )
 gs_softmax.fit(X_train, y_train)
 
 print("Softmax best params:", gs_softmax.best_params_)
-print("Softmax best CV accuracy: ", round(gs_softmax.best_score_, 4))
+print("Softmax best CV F1: ", round(gs_softmax.best_score_, 4))
 
 # model with best params
 best_sm = gs_softmax.best_params_
@@ -185,8 +186,66 @@ model_softmax = xgb.train(
 ##########################################################################
 # Model 3 : uses custom focal loss (for multiclass) as objective function
 
-# uses softprob as proxy for k-fold cross val, GridSearch can't do custom obj function
-best_fl = best_sp
+# do manual CV, GridSearch can't do custom obj function
+keys = list(param_grid.keys())
+combinations = list(product(*param_grid.values()))
+print(f"Total combinations: {len(combinations)}")
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+best_score = -1
+best_fl = None
+
+def focal_wrapper(y_pred, dtrain):
+    return focal_loss_multiclass(y_pred, dtrain, gamma=2.0)
+
+for i, combo in enumerate(combinations):
+    params = dict(zip(keys, combo))
+    cv_scores = []
+    for train_idx, val_idx in cv.split(X_train, y_train):
+        X_cv_train = X_train.iloc[train_idx]
+        X_cv_val   = X_train.iloc[val_idx]
+        y_cv_train = y_train.iloc[train_idx]
+        y_cv_val   = y_train.iloc[val_idx]
+        # DMatrix for XGBoost
+        d_cv_train = xgb.DMatrix(X_cv_train, label=y_cv_train)
+        d_cv_val   = xgb.DMatrix(X_cv_val,   label=y_cv_val)
+        # train with focal loss
+        cv_model = xgb.train(
+            {
+                **fixed_params,
+                'objective':        'multi:softprob',
+                'num_output_group': NUM_CLASS,
+                'max_depth':        params['max_depth'],
+                'learning_rate':    params['learning_rate'],
+            },
+            d_cv_train,
+            num_boost_round=params['n_estimators'],
+            obj=focal_wrapper,
+            verbose_eval=False
+        )
+        # predict on validation fold
+        raw = cv_model.predict(d_cv_val)
+        if raw.ndim == 2:
+            y_prob = raw
+        else:
+            y_prob = raw.reshape(-1, NUM_CLASS)
+        y_prob = y_prob / y_prob.sum(axis=1, keepdims=True)
+        y_pred = np.argmax(y_prob, axis=1)
+        score = f1_score(y_cv_val, y_pred, average='macro')
+        cv_scores.append(score)
+    # average score across all 5 folds
+    mean_score = np.mean(cv_scores)
+    if mean_score > best_score:
+        best_score = mean_score
+        best_params = params
+    # progress update every 10 combos
+    if (i + 1) % 10 == 0:
+        print(f"[{i+1}/{len(combinations)}] best so far: {best_score:.4f} — {best_params}")
+
+print("\nFocal best params:", best_params)
+print("Focal best CV F1: ", round(best_score, 4))
+
+best_fl = best_params
 params_focal = {
     **fixed_params,
     'objective': 'multi:softprob', # just for output shape
@@ -195,9 +254,6 @@ params_focal = {
     'learning_rate': best_fl['learning_rate'],
     'disable_default_eval_metric': 1,
 }
-
-def focal_wrapper(y_pred, dtrain):
-    return focal_loss_multiclass(y_pred, dtrain, gamma=2.0)
 
 model_focal = xgb.train(
     params_focal, dtrain,
