@@ -13,9 +13,7 @@ from sklearn.metrics import (
 )
 
 df = pd.read_csv("../preprocess/output/spotify_preprocessed.csv")
-# print(df.head())
-# print(df.columns)
-# print(df['genre_fixed'].unique())
+
 NUM_CLASS = len(df['genre_fixed'].unique())
 
 str_features = [
@@ -51,7 +49,7 @@ dtrain = xgb.DMatrix(X_train, label=y_train)
 dtest  = xgb.DMatrix(X_test,  label=y_test)
 
 base_params = {
-    'max_depth': 6, # default. try experiment more?
+    'max_depth': 6, # default
     'learning_rate': 0.1, # try values
     'subsample': 0.8, # <1 to prevent overfit: randomly sample 0.8 of the training data prior to growing trees. >= 0.5 for good results.
     'colsample_bytree': 0.8, # subsample ratio of columns when constructing each tree
@@ -63,12 +61,6 @@ base_params = {
 def focal_loss_multiclass(y_pred, dtrain, gamma):
     y_true = dtrain.get_label().astype(int)
     n_samples = len(y_true)
-
-    # num_class is 1D
-    # if len(y_pred.shape) > 1 :
-    #     num_class = y_pred.shape[1] 
-    # else :
-    # num_class = int(y_pred.max()) + 1 # +1 because label start from 0
 
     # reshape predictions to (n_samples, num_class)
     y_pred = y_pred.reshape(n_samples, -1)
