@@ -10,7 +10,6 @@ from sklearn.metrics import (
     balanced_accuracy_score,
     f1_score,
     roc_auc_score,
-    classification_report
 )
 
 df = pd.read_csv("../preprocess/output/spotify_preprocessed.csv")
@@ -162,3 +161,31 @@ results = [
     evaluate(model_focal, dtest, y_test, 'Focal Loss', NUM_CLASS, 'focal'),
 ]
 
+print(results)
+
+result_df = pd.DataFrame(results)
+
+result_df['AUC-ROC'] = pd.to_numeric(result_df['AUC-ROC'], errors='coerce') # handle N/A
+result_df.set_index('Model', inplace=True)
+
+# bar chart
+result_df.plot(kind='bar', figsize=(10, 6))
+
+plt.title("Model Performance Comparison")
+plt.ylabel("Score")
+plt.xticks(rotation=0)
+plt.legend(title="Metrics")
+plt.tight_layout()
+plt.show()
+
+
+# auc-roc only
+plt.figure(figsize=(6, 4))
+
+auc_df = result_df[['AUC-ROC']].dropna()
+plt.bar(auc_df.index, auc_df['AUC-ROC'])
+
+plt.title("AUC-ROC Comparison")
+plt.ylabel("AUC-ROC")
+plt.tight_layout()
+plt.show()
