@@ -49,16 +49,6 @@ X_train, X_test, y_train, y_test = train_test_split(
 dtrain = xgb.DMatrix(X_train, label=y_train)
 dtest  = xgb.DMatrix(X_test,  label=y_test)
 
-# base_params = {
-#      # default
-#     'learning_rate': 0.1, # try values
-#     'subsample': 0.8, # <1 to prevent overfit: randomly sample 0.8 of the training data prior to growing trees.
-#     'colsample_bytree': 0.8, # subsample ratio of columns when constructing each tree
-#     'seed': 1, 
-#     'verbosity': 0, # 0 (silent), 1 (warning), 2 (info), and 3 (debug)
-#     'num_class': NUM_CLASS
-# }
-
 fixed_params = {
     'num_class': NUM_CLASS,
     'seed': 1,
@@ -216,21 +206,6 @@ model_focal = xgb.train(
     evals=[(dtest, 'test')],
     verbose_eval=False
 )
-# focal_params = {
-#     **base_params,
-#     'num_output_group': NUM_CLASS,
-# }
-# model_focal = xgb.train(
-#     {
-#         **base_params,
-#         'objective': 'multi:softprob',
-#         'num_output_group': NUM_CLASS,
-#         'disable_default_eval_metric': 1,
-#     },
-#     dtrain, num_boost_round=100,
-#     obj=focal_wrapper,
-#     evals=[(dtest, 'test')], verbose_eval=False
-# )
 
 results = [
     evaluate(model_softprob, dtest, y_test, 'Softprob (Tuned)', NUM_CLASS, 'softprob'),
