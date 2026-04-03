@@ -3,7 +3,8 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import xgboost as xgb
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
+from xgboost import XGBClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import (
     accuracy_score,
@@ -48,14 +49,28 @@ X_train, X_test, y_train, y_test = train_test_split(
 dtrain = xgb.DMatrix(X_train, label=y_train)
 dtest  = xgb.DMatrix(X_test,  label=y_test)
 
-base_params = {
-    'max_depth': 6, # default
-    'learning_rate': 0.1, # try values
-    'subsample': 0.8, # <1 to prevent overfit: randomly sample 0.8 of the training data prior to growing trees. >= 0.5 for good results.
+# base_params = {
+#      # default
+#     'learning_rate': 0.1, # try values
+#     'subsample': 0.8, # <1 to prevent overfit: randomly sample 0.8 of the training data prior to growing trees.
+#     'colsample_bytree': 0.8, # subsample ratio of columns when constructing each tree
+#     'seed': 1, 
+#     'verbosity': 0, # 0 (silent), 1 (warning), 2 (info), and 3 (debug)
+#     'num_class': NUM_CLASS
+# }
+
+fixed_params = {
+    'num_class': NUM_CLASS,
+    'seed': 1,
+    'verbosity':0,
+    'subsample': 0.8, # <1 to prevent overfit: randomly sample 0.8 of the training data prior to growing trees.
     'colsample_bytree': 0.8, # subsample ratio of columns when constructing each tree
-    'seed': 1, 
-    'verbosity': 0, # 0 (silent), 1 (warning), 2 (info), and 3 (debug)
-    'num_class': NUM_CLASS
+}
+
+param_grid = {
+    'max_depth': [3, 6, 9],
+    'learning_rate': [0.01, 0.1, 0.3],
+    'n_estimators':  [50, 100]
 }
 
 def focal_loss_multiclass(y_pred, dtrain, gamma):
@@ -81,9 +96,9 @@ def focal_loss_multiclass(y_pred, dtrain, gamma):
     hess = focal_weight * y_pred * (1 - y_pred) * 2
     return grad.flatten(), hess.flatten()
 
+
 def get_predictions(model, dtest, num_class, objective):
     raw = model.predict(dtest)
-
     if objective == 'softmax':
         y_pred = raw.astype(int)
         y_prob = None
@@ -92,7 +107,6 @@ def get_predictions(model, dtest, num_class, objective):
         y_prob = y_prob / y_prob.sum(axis=1, keepdims=True)
         y_prob = np.clip(y_prob, 1e-7, 1 - 1e-7)
         y_pred = np.argmax(y_prob, axis=1)
-
     return y_prob, y_pred
 
 def evaluate(model, dtest, y_test, name, num_class, objective):
@@ -110,52 +124,126 @@ def evaluate(model, dtest, y_test, name, num_class, objective):
         metrics['AUC-ROC'] = 'N/A'
     return metrics
 
+#########################################################################################
 # Model 1 : uses softprob as objective function (cross-entropy, outputs probabilities)
+# 5-fold cross validation for maximizing accuracy
+gs_softprob = GridSearchCV(
+    XGBClassifier(
+        **fixed_params,
+        objective='multi:softprob',
+        eval_metric='mlogloss',
+    ),
+    param_grid=param_grid,
+    scoring='accuracy',
+    verbose=1
+)
+gs_softprob.fit(X_train, y_train)
+
+print("Softprob best params:", gs_softprob.best_params_)
+print("Softprob best CV Accuracy: ", round(gs_softprob.best_score_, 4))
+
+# model with best params
+best_sp = gs_softprob.best_params_
+params_softprob = {
+    **fixed_params,
+    'objective': 'multi:softprob',
+    'max_depth': best_sp['max_depth'],
+    'learning_rate': best_sp['learning_rate'],
+}
+
 model_softprob = xgb.train(
-    {**base_params, 'objective': 'multi:softprob'},
-    dtrain, num_boost_round=100,
-    evals=[(dtest, 'test')], verbose_eval=False
+    params_softprob, dtrain,
+    num_boost_round = best_sp['n_estimators'],
+    evals=[(dtest, 'test')],
+    verbose_eval=False
 )
 
-params_softprob = {**base_params, 'objective': 'multi:softprob'}
+#####################################################
+# Model 2 : uses softmax as objective function
+# 5-fold cross validation for maximizing accuracy
+gs_softmax = GridSearchCV(
+    XGBClassifier(
+        **fixed_params,
+        objective='multi:softmax',
+    ),
+    param_grid=param_grid,
+    scoring='accuracy',
+    n_jobs=-1,
+    verbose=1
+)
+gs_softmax.fit(X_train, y_train)
 
-# Model 2 : uses softmax as objective function (outputs class label directly)
+print("Softmax best params:", gs_softmax.best_params_)
+print("Softmax best CV accuracy: ", round(gs_softmax.best_score_, 4))
+
+# model with best params
+best_sm = gs_softmax.best_params_
+params_softmax = {
+    **fixed_params,
+    'objective': 'multi:softmax',
+    'max_depth': best_sm['max_depth'],
+    'learning_rate': best_sm['learning_rate'],
+}
+
 model_softmax = xgb.train(
-    {**base_params, 'objective': 'multi:softmax'},
-    dtrain, num_boost_round=100,
-    evals=[(dtest, 'test')], verbose_eval=False
+    params_softmax, dtrain,
+    num_boost_round=best_sm['n_estimators'],
+    evals=[(dtest, 'test')],
+    verbose_eval=False
 )
 
+##########################################################################
 # Model 3 : uses custom focal loss (for multiclass) as objective function
+
+# uses softprob as proxy for k-fold cross val, GridSearch can't do custom obj function
+best_fl = best_sp
+params_focal = {
+    **fixed_params,
+    'objective': 'multi:softprob', # just for output shape
+    'num_output_group': NUM_CLASS,
+    'max_depth': best_fl['max_depth'],
+    'learning_rate': best_fl['learning_rate'],
+    'disable_default_eval_metric': 1,
+}
 
 def focal_wrapper(y_pred, dtrain):
     return focal_loss_multiclass(y_pred, dtrain, gamma=2.0)
-focal_params = {
-    **base_params,
-    'num_output_group': NUM_CLASS,
-}
 
 model_focal = xgb.train(
-    {
-        **base_params,
-        'objective': 'multi:softprob', # output shape
-        'num_output_group': NUM_CLASS,
-        'disable_default_eval_metric': 1,
-    },
-    dtrain, num_boost_round=100,
+    params_focal, dtrain,
+    num_boost_round=best_fl['n_estimators'],
     obj=focal_wrapper,
-    evals=[(dtest, 'test')], verbose_eval=False
+    evals=[(dtest, 'test')],
+    verbose_eval=False
 )
+# focal_params = {
+#     **base_params,
+#     'num_output_group': NUM_CLASS,
+# }
+# model_focal = xgb.train(
+#     {
+#         **base_params,
+#         'objective': 'multi:softprob',
+#         'num_output_group': NUM_CLASS,
+#         'disable_default_eval_metric': 1,
+#     },
+#     dtrain, num_boost_round=100,
+#     obj=focal_wrapper,
+#     evals=[(dtest, 'test')], verbose_eval=False
+# )
 
 results = [
-    evaluate(model_softprob, dtest, y_test, 'Softprob', NUM_CLASS, 'softprob'),
-    evaluate(model_softmax, dtest, y_test, 'Softmax', NUM_CLASS, 'softmax'),
-    evaluate(model_focal, dtest, y_test, 'Focal Loss', NUM_CLASS, 'focal'),
+    evaluate(model_softprob, dtest, y_test, 'Softprob (Tuned)', NUM_CLASS, 'softprob'),
+    evaluate(model_softmax, dtest, y_test, 'Softmax (Tuned)', NUM_CLASS, 'softmax'),
+    evaluate(model_focal, dtest, y_test, 'Focal Loss (Tuned)', NUM_CLASS, 'focal'),
 ]
 
 print(results)
 
 result_df = pd.DataFrame(results)
+
+#table
+print(result_df)
 
 result_df['AUC-ROC'] = pd.to_numeric(result_df['AUC-ROC'], errors='coerce') # handle N/A
 result_df.set_index('Model', inplace=True)
@@ -169,7 +257,6 @@ plt.xticks(rotation=0)
 plt.legend(title="Metrics")
 plt.tight_layout()
 plt.show()
-
 
 # auc-roc only
 plt.figure(figsize=(6, 4))
