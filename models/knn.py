@@ -6,7 +6,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import accuracy_score
 
 df = pd.read_csv("../preprocess/output/spotify_preprocessed.csv")
 
@@ -56,6 +56,8 @@ for metric in metrics:
 
 results_df = pd.DataFrame(results)
 best_row = results_df.loc[results_df['cv'].idxmax()]
+print("Best Hyperparameters:\n")
+print(best_row)
 
 plt.figure(figsize=(10, 6))
 
@@ -79,12 +81,3 @@ best_knn = KNeighborsClassifier( n_neighbors=int(best_row['k']), metric=best_row
 best_knn.fit(X_train_scaled, y_train)
 y_pred = best_knn.predict(X_test_scaled)
 print(classification_report(y_test, y_pred))
-
-cm = confusion_matrix(y_test, y_pred)
-
-plt.figure(figsize=(10, 8))
-sns.heatmap(cm, annot=False, fmt='d')
-plt.title("Confusion Matrix")
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-plt.show()

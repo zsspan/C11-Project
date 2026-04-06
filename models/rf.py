@@ -6,8 +6,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix
 import seaborn as sns
+from sklearn.metrics import accuracy_score
 
 df = pd.read_csv("../preprocess/output/spotify_preprocessed.csv")
 
@@ -54,22 +54,6 @@ best_row = results_df.loc[results_df['cv'].idxmax()]
 
 plt.figure(figsize=(10, 6))
 
-for depth in max_depth_values:
-    subset = results_df[
-        (results_df['max_depth'] == depth) &
-        (results_df['min_samples_leaf'] == best_row['min_samples_leaf']) &
-        (results_df['max_features'] == best_row['max_features'])
-    ]
-    label = f"depth={depth}"
-    plt.plot(subset['n_estimators'], subset['cv'], marker='o', label=label)
-
-plt.xlabel("n_estimators")
-plt.ylabel("CV Score")
-plt.title("Effect of max_depth")
-plt.legend()
-plt.grid(True)
-plt.show()
-
 print("Best Hyperparameters:\n")
 print(best_row)
 
@@ -91,12 +75,3 @@ final_rf.fit(X_train, y_train)
 #evaluate
 y_pred = final_rf.predict(X_test)
 print(classification_report(y_test, y_pred))
-
-cm = confusion_matrix(y_test, y_pred)
-
-plt.figure(figsize=(10, 8))
-sns.heatmap(cm, annot=False, fmt='d')
-plt.title("Confusion Matrix")
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-plt.show()
