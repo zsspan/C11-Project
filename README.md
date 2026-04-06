@@ -29,6 +29,7 @@ pip install -r requirements.txt
 4. Models
 - TODO
 - Add how to run models
+- To simulate the logistic regression model, open `models/logistic-model.py`. In the main function, two functions are commented out. Uncommenting the function `showScore(scaled_X_train, y_train, scaled_X_test, y_test)` will run the model on the found best hyperparameters, iterating through the C values, and displaying a graph of its precision, accuracy, and balanced accuracy. Uncommenting the function `grid_lr(scaled_X_train, y_train, scaled_X_test, y_test, 8)` will run the gridsearch. The last positional argument represents the number of jobs the grid search will use. Change appropriately.
 
 ## Notes and pointers
 - Used plots are included in the project report but may also be present in the `output` directories
