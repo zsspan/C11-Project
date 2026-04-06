@@ -33,6 +33,7 @@ pip install -r requirements.txt
 - Open `preprocess/explore.ipynb` and run cells. It reads `spotify_preprocessed.csv` and produces plots (heatmap, pairplot, genre distribution).
 
 4. Models
+
 To run the models, make sure the preprocessed dataset exist at `../preprocess/output/spotify_preprocessed.csv`. If not, update this line in the code: `df = pd.read_csv("path/to/your/spotify_preprocessed.csv")`
 
 - To run the KNN model, open `models/KNN.py`, and run the file. Best parameters, and performance metrics for all groups and overall performance will be printed.
