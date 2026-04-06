@@ -39,7 +39,7 @@ sqrt_n = np.sqrt(n)
 metrics = ['euclidean', 'manhattan']
 weights = ['uniform', 'distance']
 
-k_values = (np.arange(1, sqrt_n, 2).astype(int)).tolist()
+k_values = (np.arange(1, sqrt_n, 2).astype(int)).tolist() #as done in assignment
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
@@ -59,24 +59,9 @@ best_row = results_df.loc[results_df['cv'].idxmax()]
 print("Best Hyperparameters:\n")
 print(best_row)
 
-plt.figure(figsize=(10, 6))
-
-for metric in metrics:
-    for weight in weights:
-        subset = results_df[ (results_df['metric'] == metric) & (results_df['weights'] == weight) ]
-        label = f"{metric}, {weight}"
-        plt.plot(subset['k'], subset['cv'], marker='o', label=label)
-
-plt.xlabel("k (Number of Neighbors)")
-plt.ylabel("CV F1 Macro Score")
-plt.title("KNN Hyperparameter Tuning")
-plt.legend()
-plt.grid(True)
-plt.show()
-
 best_knn = KNeighborsClassifier( n_neighbors=int(best_row['k']), metric=best_row['metric'], weights=best_row['weights'])
 
-#final
+#finally
 
 best_knn.fit(X_train_scaled, y_train)
 y_pred = best_knn.predict(X_test_scaled)

@@ -41,7 +41,7 @@ cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 results = []
 
-for n_est in n_estimators_values: #takes 4 minutes
+for n_est in n_estimators_values: #takes 4-5 minutes
     for depth in max_depth_values:
         for min_leaf in min_leaf_values:
             for max_feat in max_features_values:
@@ -51,8 +51,6 @@ for n_est in n_estimators_values: #takes 4 minutes
 
 results_df = pd.DataFrame(results)
 best_row = results_df.loc[results_df['cv'].idxmax()]
-
-plt.figure(figsize=(10, 6))
 
 print("Best Hyperparameters:\n")
 print(best_row)
