@@ -33,11 +33,12 @@ pip install -r requirements.txt
 - Open `preprocess/explore.ipynb` and run cells. It reads `spotify_preprocessed.csv` and produces plots (heatmap, pairplot, genre distribution).
 
 4. Models
+To run the models, make sure the preprocessed dataset exist at `../preprocess/output/spotify_preprocessed.csv`. If not, update this line in the code: `df = pd.read_csv("path/to/your/spotify_preprocessed.csv")`
 
 - To run the KNN model, open `models/KNN.py`, and run the file. Best parameters, and performance metrics for all groups and overall performance will be printed.
 - To run the RF model, open `models/RF.py`, and run the file. Best parameters, and performance metrics for all groups and overall performance will be printed.
 - To simulate the logistic regression model, open `models/logistic-model.py`. In the main function, two functions are commented out. Uncommenting the function `showScore(scaled_X_train, y_train, scaled_X_test, y_test)` will run the model on the found best hyperparameters, iterating through the C values, and displaying a graph of its precision, accuracy, and balanced accuracy. Uncommenting the function `grid_lr(scaled_X_train, y_train, scaled_X_test, y_test, 8)` will run the gridsearch. The last positional argument represents the number of jobs the grid search will use. Change appropriately.
-- To run the Gradient Boost model, open `models/gradient-boost.py`, and run the file. It will take some time.
+- To run the Gradient Boost model, open `models/gradient-boost.py`, and run the file. The code will perform feature encoding, train-test split, train 3 models (using softprob, softmax, custom focal loss), run hyperparameter tuning (gridSearch CV), print the best parameters, evaluation metrics, and display evaluation bar chart.
 
 ## Notes and pointers
 
