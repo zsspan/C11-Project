@@ -1,0 +1,301 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import xgboost as xgb
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
+from xgboost import XGBClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score,
+    roc_auc_score,
+)
+from itertools import product
+
+df = pd.read_csv("../preprocess/output/spotify_preprocessed.csv")
+
+NUM_CLASS = len(df['genre_fixed'].unique())
+
+str_features = [
+    'track_name', 'artist_name', 'genre', 'album_id', 'album_name', 'album_type'
+]
+
+non_str_features = [ 
+    'track_number', 'track_popularity', 'track_duration_ms', 
+    'explicit', 'artist_popularity', 'artist_followers',
+    'album_release_date', 'album_total_tracks', 
+    'danceability', 'energy', 'acousticness', 'instrumentalness', 'valence',
+    'tempo', 'speechiness'
+]
+
+features = str_features + non_str_features
+
+# encode non-numeric values to numeric
+for ft in str_features:
+    le = LabelEncoder()
+    le.fit(df[ft])
+    df[ft] = le.transform(df[ft])
+
+le = LabelEncoder()
+le.fit(df['genre_fixed'])
+df['genre_fixed'] = le.transform(df['genre_fixed'])
+
+# split test & train set with 20-80 split
+X_train, X_test, y_train, y_test = train_test_split(
+                                    df[features], df['genre_fixed'], test_size=.2, 
+                                    random_state=1)
+
+dtrain = xgb.DMatrix(X_train, label=y_train)
+dtest  = xgb.DMatrix(X_test,  label=y_test)
+
+fixed_params = {
+    'num_class': NUM_CLASS,
+    'seed': 1,
+    'verbosity':0,
+    'subsample': 0.8, # <1 to prevent overfit: randomly sample 0.8 of the training data prior to growing trees.
+    'colsample_bytree': 0.8, # subsample ratio of columns when constructing each tree
+}
+
+param_grid = {
+    'max_depth': [3, 6, 9],
+    'learning_rate': [0.01, 0.1, 0.3],
+    'n_estimators':  [50, 100, 200]
+}
+
+def focal_loss_multiclass(y_pred, dtrain, gamma):
+    y_true = dtrain.get_label().astype(int)
+    n_samples = len(y_true)
+
+    # reshape predictions to (n_samples, num_class)
+    y_pred = y_pred.reshape(n_samples, -1)
+    # softmax
+    y_pred = np.exp(y_pred)
+    y_pred = y_pred / y_pred.sum(axis=1, keepdims=True)
+    # one-hot encode y_true, 1 if true
+    y_onehot = np.zeros_like(y_pred)
+    y_onehot[np.arange(n_samples), y_true] = 1
+    # focal weight per sample, probability of true/correct class
+    pt = (y_pred * y_onehot).sum(axis=1, keepdims=True)
+    focal_weight = (1 - pt) ** gamma
+    
+    # gradient (first deriv) and hessian (second deriv)
+    # first deriv is (1-pt)^gamma (pt-y)
+    # second deriv is (1-pt)^gamma 2pt (1-pt)
+    grad = focal_weight * (y_pred - y_onehot)
+    hess = focal_weight * y_pred * (1 - y_pred) * 2
+    return grad.flatten(), hess.flatten()
+
+
+def get_predictions(model, dtest, num_class, objective):
+    raw = model.predict(dtest)
+    if objective == 'softmax':
+        y_pred = raw.astype(int)
+        y_prob = None
+    else:
+        y_prob = raw if raw.ndim == 2 else raw.reshape(-1, num_class)
+        y_prob = y_prob / y_prob.sum(axis=1, keepdims=True)
+        y_prob = np.clip(y_prob, 1e-7, 1 - 1e-7)
+        y_pred = np.argmax(y_prob, axis=1)
+    return y_prob, y_pred
+
+def evaluate(model, dtest, y_test, name, num_class, objective):
+    y_prob, y_pred = get_predictions(model, dtest, num_class, objective)
+
+    metrics = {'Model': name}
+    metrics['Accuracy'] = round(accuracy_score(y_test, y_pred), 4)
+    metrics['Balanced Acc'] = round(balanced_accuracy_score(y_test, y_pred), 4)
+    metrics['F1 Macro'] = round(f1_score(y_test, y_pred, average='macro'), 4)
+    metrics['F1 Weighted'] = round(f1_score(y_test, y_pred, average='weighted'), 4)
+
+    if y_prob is not None:
+        metrics['AUC-ROC'] = round(roc_auc_score(y_test, y_prob, multi_class='ovr'), 4)
+    else:
+        metrics['AUC-ROC'] = 'N/A'
+    return metrics
+
+#########################################################################################
+# Model 1 : uses softprob as objective function (cross-entropy, outputs probabilities)
+# 5-fold cross validation for maximizing F1 macro, use F1 macro and not accuracy because of class imbalance
+gs_softprob = GridSearchCV(
+    XGBClassifier(
+        **fixed_params,
+        objective='multi:softprob',
+        eval_metric='mlogloss',
+    ),
+    param_grid=param_grid,
+    scoring='f1_macro',
+    verbose=1
+)
+gs_softprob.fit(X_train, y_train)
+
+print("Softprob best params:", gs_softprob.best_params_)
+print("Softprob best CV F1: ", round(gs_softprob.best_score_, 4))
+
+# model with best params
+best_sp = gs_softprob.best_params_
+params_softprob = {
+    **fixed_params,
+    'objective': 'multi:softprob',
+    'max_depth': best_sp['max_depth'],
+    'learning_rate': best_sp['learning_rate'],
+}
+
+model_softprob = xgb.train(
+    params_softprob, dtrain,
+    num_boost_round = best_sp['n_estimators'],
+    evals=[(dtest, 'test')],
+    verbose_eval=False
+)
+
+#####################################################
+# Model 2 : uses softmax as objective function
+# 5-fold cross validation for maximizing F1 macro
+gs_softmax = GridSearchCV(
+    XGBClassifier(
+        **fixed_params,
+        objective='multi:softmax',
+    ),
+    param_grid=param_grid,
+    scoring='f1_macro',
+    n_jobs=-1,
+    verbose=1
+)
+gs_softmax.fit(X_train, y_train)
+
+print("Softmax best params:", gs_softmax.best_params_)
+print("Softmax best CV F1: ", round(gs_softmax.best_score_, 4))
+
+# model with best params
+best_sm = gs_softmax.best_params_
+params_softmax = {
+    **fixed_params,
+    'objective': 'multi:softmax',
+    'max_depth': best_sm['max_depth'],
+    'learning_rate': best_sm['learning_rate'],
+}
+
+model_softmax = xgb.train(
+    params_softmax, dtrain,
+    num_boost_round=best_sm['n_estimators'],
+    evals=[(dtest, 'test')],
+    verbose_eval=False
+)
+
+##########################################################################
+# Model 3 : uses custom focal loss (for multiclass) as objective function
+
+# do manual CV, GridSearch can't do custom obj function
+keys = list(param_grid.keys())
+combinations = list(product(*param_grid.values()))
+print(f"Total combinations: {len(combinations)}")
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+best_score = -1
+best_fl = None
+
+def focal_wrapper(y_pred, dtrain):
+    return focal_loss_multiclass(y_pred, dtrain, gamma=2.0)
+
+for i, combo in enumerate(combinations):
+    params = dict(zip(keys, combo))
+    cv_scores = []
+    for train_idx, val_idx in cv.split(X_train, y_train):
+        X_cv_train = X_train.iloc[train_idx]
+        X_cv_val   = X_train.iloc[val_idx]
+        y_cv_train = y_train.iloc[train_idx]
+        y_cv_val   = y_train.iloc[val_idx]
+        # DMatrix for XGBoost
+        d_cv_train = xgb.DMatrix(X_cv_train, label=y_cv_train)
+        d_cv_val   = xgb.DMatrix(X_cv_val,   label=y_cv_val)
+        # train with focal loss
+        cv_model = xgb.train(
+            {
+                **fixed_params,
+                'objective':        'multi:softprob',
+                'num_output_group': NUM_CLASS,
+                'max_depth':        params['max_depth'],
+                'learning_rate':    params['learning_rate'],
+            },
+            d_cv_train,
+            num_boost_round=params['n_estimators'],
+            obj=focal_wrapper,
+            verbose_eval=False
+        )
+        # predict on validation fold
+        raw = cv_model.predict(d_cv_val)
+        if raw.ndim == 2:
+            y_prob = raw
+        else:
+            y_prob = raw.reshape(-1, NUM_CLASS)
+        y_prob = y_prob / y_prob.sum(axis=1, keepdims=True)
+        y_pred = np.argmax(y_prob, axis=1)
+        score = f1_score(y_cv_val, y_pred, average='macro')
+        cv_scores.append(score)
+    # average score across all 5 folds
+    mean_score = np.mean(cv_scores)
+    if mean_score > best_score:
+        best_score = mean_score
+        best_params = params
+    # progress update every 10 combos
+    if (i + 1) % 10 == 0:
+        print(f"[{i+1}/{len(combinations)}] best so far: {best_score:.4f} — {best_params}")
+
+print("\nFocal best params:", best_params)
+print("Focal best CV F1: ", round(best_score, 4))
+
+best_fl = best_params
+params_focal = {
+    **fixed_params,
+    'objective': 'multi:softprob', # just for output shape
+    'num_output_group': NUM_CLASS,
+    'max_depth': best_fl['max_depth'],
+    'learning_rate': best_fl['learning_rate'],
+    'disable_default_eval_metric': 1,
+}
+
+model_focal = xgb.train(
+    params_focal, dtrain,
+    num_boost_round=best_fl['n_estimators'],
+    obj=focal_wrapper,
+    evals=[(dtest, 'test')],
+    verbose_eval=False
+)
+
+results = [
+    evaluate(model_softprob, dtest, y_test, 'Softprob (Tuned)', NUM_CLASS, 'softprob'),
+    evaluate(model_softmax, dtest, y_test, 'Softmax (Tuned)', NUM_CLASS, 'softmax'),
+    evaluate(model_focal, dtest, y_test, 'Focal Loss (Tuned)', NUM_CLASS, 'focal'),
+]
+
+print(results)
+
+result_df = pd.DataFrame(results)
+
+#table
+print(result_df)
+
+result_df['AUC-ROC'] = pd.to_numeric(result_df['AUC-ROC'], errors='coerce') # handle N/A
+result_df.set_index('Model', inplace=True)
+
+# bar chart
+result_df.plot(kind='bar', figsize=(10, 6))
+
+plt.title("Model Performance Comparison")
+plt.ylabel("Score")
+plt.xticks(rotation=0)
+plt.legend(title="Metrics")
+plt.tight_layout()
+plt.show()
+
+# auc-roc only
+plt.figure(figsize=(6, 4))
+
+auc_df = result_df[['AUC-ROC']].dropna()
+plt.bar(auc_df.index, auc_df['AUC-ROC'])
+
+plt.title("AUC-ROC Comparison")
+plt.ylabel("AUC-ROC")
+plt.tight_layout()
+plt.show()
