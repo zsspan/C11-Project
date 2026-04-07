@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+# INITIAL IMPLEMENTATION
 def categorize_genre(genre_string):
     # Standardize the text to lowercase to avoid case-sensitivity issues
     genre = str(genre_string).lower()
@@ -69,6 +70,7 @@ MACRO_GROUPS = {
 GENRE_MAP = {genre: macro for macro, genres in MACRO_GROUPS.items() for genre in genres}
 
 
+# USE KEY INVERSIONS
 def categorize_genre2(genre_string):
     """Takes a micro-genre string and returns the mapped macro-genre."""
     genre = str(genre_string).lower()
@@ -82,6 +84,7 @@ def categorize_genre2(genre_string):
 
 GENRE_MAP = {genre: macro for macro, genres in MACRO_GROUPS.items() for genre in genres}
 
+# THIS ONE HSA THE BEST VALUE_COUNTS AND NORMALIZED SETUP
 def categorize_genre3(genre_string):
     """Takes a micro-genre string and returns the mapped macro-genre using a hybrid approach."""
     genre = str(genre_string).lower()
