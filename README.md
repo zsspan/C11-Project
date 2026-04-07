@@ -4,14 +4,14 @@ This repository contains the source code and related model implementations for c
 
 ## Repository Overview
 
-- `datasets/`: raw CSV datasets (ex: `full_spotify_dataset.csv`).
+- `datasets/`: contains the raw CSV dataset (`full_spotify_dataset.csv`).
+    - Originally there were 4 datasets that we contemplated on using (present in our original proposal). Afterwards we finalized it down to an extrapolated version of the Spotify Global Music Dataset originally found on [Kaggle](https://www.kaggle.com/datasets/wardabilal/spotify-global-music-dataset-20092025).
 - `models/`: our implementations for the chosen models (K Nearest Neighbors, Random Forest, Logistic Regression, Gradient Boost )
 - `preprocess/`: Jupyter notebooks and output for preprocessing and feature extraction:
-  - `preprocess/preprocessing.ipynb` - main file that preprocesses the given data, and outputs a cleaned dataset for other models to use
+  - `preprocessing.ipynb` - main file that preprocesses the given data, and outputs a cleaned dataset for other models to use
   - `explore.ipynb` - EDA visualizations.
   - `output/`: the outputs artifacts including the full final dataset `spotify_preprocessed.csv`
-  - `util/`: helper scripts used by notebooks and experiments:
-  - `util/classify_genre.py` - utility functions used for syntax genre grouping
+  - `util/`: helper scripts used for syntax genre grouping, etc
 - `results/`: some of the figures
 
 ## Running the project
@@ -45,3 +45,7 @@ To run the models, make sure the preprocessed dataset exist at `../preprocess/ou
 
 - Used plots are included in the project report but may also be present in the `output` directories
 - There are no trained model files in the repository by default; save any produced models into a new `models/` directory if you add them.
+
+## Contributors
+
+Made by Ada Cakmak, Kayna Mufidah, Nathanael Kevin Sitepu and Zohair Syed.
